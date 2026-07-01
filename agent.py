@@ -19,22 +19,18 @@ HEADERS = {
 }
 
 # ─────────────────────────────────────────
-# TOOL 1: Get PR details
+# YOUR 3 TOOLS — same as Day 7
 # ─────────────────────────────────────────
 def get_pr_details(repo_name: str, pr_number: int) -> str:
-    """
-    Gets the details of a Pull Request including title, description, and author.
-    repo_name format: owner/repository (example: facebook/react)
-    pr_number: the number of the PR (example: 36881)
+    """Gets the details of a Pull Request including title, description and author.
+    repo_name format: owner/repository
+    pr_number: the PR number
     """
     url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}"
     response = requests.get(url, headers=HEADERS)
-
     if response.status_code != 200:
         return f"Could not fetch PR: {response.status_code}"
-
     data = response.json()
-
     result = {
         "title": data["title"],
         "author": data["user"]["login"],
@@ -46,65 +42,45 @@ def get_pr_details(repo_name: str, pr_number: int) -> str:
         "base_branch": data["base"]["ref"],
         "head_branch": data["head"]["ref"]
     }
-
     return json.dumps(result)
 
 
-# ─────────────────────────────────────────
-# TOOL 2: Get the actual code changes
-# ─────────────────────────────────────────
 def get_pr_files(repo_name: str, pr_number: int) -> str:
-    """
-    Gets the actual code changes (diff) of a Pull Request.
-    Returns each changed file with what was added and removed.
+    """Gets the actual code changes of a Pull Request.
     repo_name format: owner/repository
     pr_number: the PR number
     """
     url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/files"
     response = requests.get(url, headers=HEADERS)
-
     if response.status_code != 200:
         return f"Could not fetch PR files: {response.status_code}"
-
     files = response.json()
-
     if not files:
         return "No files changed in this PR."
-
     result = []
-    for file in files[:5]:  # limit to 5 files so AI doesn't get overwhelmed
+    for file in files[:5]:
         result.append({
             "filename": file["filename"],
-            "status": file["status"],        # added, modified, removed
+            "status": file["status"],
             "additions": file["additions"],
             "deletions": file["deletions"],
-            "patch": file.get("patch", "Binary file or too large to display")[:800]
+            "patch": file.get("patch", "Binary file")[:800]
         })
-
     return json.dumps(result)
 
 
-# ─────────────────────────────────────────
-# TOOL 3: Get existing PR comments
-# ─────────────────────────────────────────
 def get_pr_comments(repo_name: str, pr_number: int) -> str:
-    """
-    Gets existing review comments on a Pull Request.
-    Useful to see what has already been flagged before adding new review.
+    """Gets existing review comments on a Pull Request.
     repo_name format: owner/repository
     pr_number: the PR number
     """
     url = f"https://api.github.com/repos/{repo_name}/pulls/{pr_number}/comments"
     response = requests.get(url, headers=HEADERS)
-
     if response.status_code != 200:
         return f"Could not fetch comments: {response.status_code}"
-
     comments = response.json()
-
     if not comments:
         return "No existing review comments."
-
     result = []
     for comment in comments[:5]:
         result.append({
@@ -112,12 +88,11 @@ def get_pr_comments(repo_name: str, pr_number: int) -> str:
             "file": comment["path"],
             "comment": comment["body"][:300]
         })
-
     return json.dumps(result)
 
 
 # ─────────────────────────────────────────
-# AGENT SETUP
+# AGENT
 # ─────────────────────────────────────────
 model = genai.GenerativeModel(
     model_name="gemini-2.5-flash",
@@ -146,23 +121,45 @@ Specific improvements with example code where possible.
 
 ## Verdict
 One of: APPROVE / REQUEST CHANGES / NEEDS DISCUSSION
-With a one line reason.
-
-Be direct, specific, and technical. Reference actual line changes when possible.""",
+With a one line reason.""",
     tools=[get_pr_details, get_pr_files, get_pr_comments]
 )
 
-chat = model.start_chat(enable_automatic_function_calling=True)
 
-print("=" * 50)
-print("   PR Review Agent — Ready")
-print("=" * 50)
-print("\nExample: 'Review PR 36881 in facebook/react'\n")
+# ─────────────────────────────────────────
+# FLASK WEB SERVER — this is what's new
+# ─────────────────────────────────────────
+app = Flask(__name__)
 
-while True:
-    user_input = input("You: ")
-    if user_input.lower() == "exit":
-        break
-    response = chat.send_message(user_input)
-    print(f"\nAgent:\n{response.text}\n")
-    print("-" * 50 + "\n")
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({"status": "PR Review Agent is running"})
+
+
+@app.route("/review", methods=["POST"])
+def review():
+    # Read the incoming request
+    data = request.json
+    repo = data.get("repo")
+    pr_number = data.get("pr_number")
+
+    if not repo or not pr_number:
+        return jsonify({"error": "Please provide repo and pr_number"}), 400
+
+    # Start a fresh chat for each review
+    chat = model.start_chat(enable_automatic_function_calling=True)
+
+    # Ask the agent to review
+    message = f"Review PR {pr_number} in {repo}"
+    response = chat.send_message(message)
+
+    return jsonify({
+        "repo": repo,
+        "pr_number": pr_number,
+        "review": response.text
+    })
+
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
