@@ -1,0 +1,20 @@
+{
+  "PROJ-101": {
+    "title": "Login button broken on iOS",
+    "priority": "High",
+    "assignee": "Ahmed",
+    "description": "Users on iOS Safari cannot tap the login button. Appears clickable but nothing happens."
+  },
+  "PROJ-102": {
+    "title": "Dashboard loads slowly",
+    "priority": "Medium",
+    "assignee": "Sara",
+    "description": "Dashboard takes 8-12 seconds to load for users with more than 100 records."
+  },
+  "PROJ-103": {
+    "title": "Email notifications not sending",
+    "priority": "High",
+    "assignee": "Unassigned",
+    "description": "Password reset and welcome emails are not being delivered since the last deployment."
+  }
+}
