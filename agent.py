@@ -5,7 +5,6 @@ import os
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 
-# Load secrets from .env file
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -19,7 +18,7 @@ HEADERS = {
 }
 
 # ─────────────────────────────────────────
-# YOUR 3 TOOLS — same as Day 7
+# YOUR 3 TOOLS — same as before
 # ─────────────────────────────────────────
 def get_pr_details(repo_name: str, pr_number: int) -> str:
     """Gets the details of a Pull Request including title, description and author.
@@ -56,7 +55,7 @@ def get_pr_files(repo_name: str, pr_number: int) -> str:
         return f"Could not fetch PR files: {response.status_code}"
     files = response.json()
     if not files:
-        return "No files changed in this PR."
+        return "No files changed."
     result = []
     for file in files[:5]:
         result.append({
@@ -127,9 +126,23 @@ With a one line reason.""",
 
 
 # ─────────────────────────────────────────
-# FLASK WEB SERVER — this is what's new
+# NEW FUNCTION: Post review as GitHub comment
+# ─────────────────────────────────────────
+def post_github_comment(repo_name: str, pr_number: int, comment: str):
+    """Posts the AI review as a real comment on the GitHub PR."""
+    url = f"https://api.github.com/repos/{repo_name}/issues/{pr_number}/comments"
+
+    body = f"## 🤖 AI PR Review\n\n{comment}\n\n---\n*Reviewed automatically by PR Review Agent*"
+
+    response = requests.post(url, headers=HEADERS, json={"body": body})
+    return response.status_code
+
+
+# ─────────────────────────────────────────
+# FLASK ROUTES
 # ─────────────────────────────────────────
 app = Flask(__name__)
+
 
 @app.route("/", methods=["GET"])
 def home():
@@ -138,7 +151,6 @@ def home():
 
 @app.route("/review", methods=["POST"])
 def review():
-    # Read the incoming request
     data = request.json
     repo = data.get("repo")
     pr_number = data.get("pr_number")
@@ -146,10 +158,7 @@ def review():
     if not repo or not pr_number:
         return jsonify({"error": "Please provide repo and pr_number"}), 400
 
-    # Start a fresh chat for each review
     chat = model.start_chat(enable_automatic_function_calling=True)
-
-    # Ask the agent to review
     message = f"Review PR {pr_number} in {repo}"
     response = chat.send_message(message)
 
@@ -160,6 +169,52 @@ def review():
     })
 
 
+# ─────────────────────────────────────────
+# NEW ROUTE: GitHub calls this automatically
+# ─────────────────────────────────────────
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+
+    # GitHub sends many types of events
+    # We only care about PR events
+    if "pull_request" not in data:
+        return jsonify({"status": "ignored — not a PR event"}), 200
+
+    action = data.get("action")
+
+    # Only review when PR is first opened or new commits pushed
+    if action not in ["opened", "synchronize"]:
+        return jsonify({"status": f"ignored — action was {action}"}), 200
+
+    # Extract PR info from GitHub's payload
+    pr_number = data["pull_request"]["number"]
+    repo_name = data["repository"]["full_name"]
+    pr_title = data["pull_request"]["title"]
+    pr_author = data["pull_request"]["user"]["login"]
+
+    print(f"\n🔔 New PR received: #{pr_number} — {pr_title} by {pr_author}")
+    print(f"   Repo: {repo_name}")
+    print(f"   Starting review...\n")
+
+    # Run the agent
+    chat = model.start_chat(enable_automatic_function_calling=True)
+    message = f"Review PR {pr_number} in {repo_name}"
+    response = chat.send_message(message)
+
+    # Post review as a real GitHub comment
+    status = post_github_comment(repo_name, pr_number, response.text)
+
+    print(f"✅ Review posted. GitHub response: {status}\n")
+
+    return jsonify({
+        "status": "review completed",
+        "pr": pr_number,
+        "repo": repo_name,
+        "comment_status": status
+    })
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
