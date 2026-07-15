@@ -97,7 +97,7 @@ You have access to a ClickUp list. When asked to review tasks:
 
 1. Fetch all tasks in the list
 2. Analyze each one by:
-   - Status (To Do / In Progress / Done etc.)
+   - Status (To Do / In Progress / On Dev / Done etc.)
    - Priority (Urgent / High / Normal / Low / None set)
    - Whether it's assigned or unassigned
    - Whether it has a due date
