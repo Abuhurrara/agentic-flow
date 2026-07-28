@@ -77,37 +77,6 @@ def get_my_tasks(list_id: str, my_username: str) -> str:
 
     return json.dumps(result)
 
-
-# ─────────────────────────────────────────
-# TOOL 2: Get details of one specific task
-# ─────────────────────────────────────────
-def get_clickup_task_details(task_id: str) -> str:
-    """
-    Gets full details of a specific ClickUp task including comments.
-    task_id: the ID of the ClickUp task
-    """
-    url = f"https://api.clickup.com/api/v2/task/{task_id}"
-    response = requests.get(url, headers=HEADERS)
-
-    if response.status_code != 200:
-        return f"Could not fetch task: {response.status_code}"
-
-    task = response.json()
-
-    result = {
-        "id": task["id"],
-        "name": task["name"],
-        "description": task.get("description") or "No description",
-        "status": task["status"]["status"],
-        "priority": task["priority"]["priority"] if task.get("priority") else "None",
-        "assignees": [a["username"] for a in task.get("assignees", [])],
-        "tags": [t["name"] for t in task.get("tags", [])],
-        "due_date": task.get("due_date")
-    }
-
-    return json.dumps(result)
-
-
 # ─────────────────────────────────────────
 # THE AGENT
 # ─────────────────────────────────────────
